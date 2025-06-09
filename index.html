@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI ディベートアプリ</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -105,6 +106,16 @@
         .btn-secondary:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(245, 87, 108, 0.3);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #34d399 0%, #059669 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(5, 150, 105, 0.3);
         }
 
         .btn:disabled {
@@ -309,6 +320,9 @@
                 <button id="summaryBtn" class="btn btn-primary" onclick="showDebateSummary()" style="display: none;">
                     📊 議論を整理する
                 </button>
+                <button id="downloadBtn" class="btn btn-success" onclick="downloadDebateExcel()" style="display: none;">
+                    📥 Excelでダウンロード
+                </button>
                 <span id="loadingIndicator" class="loading" style="display: none;"></span>
             </div>
 
@@ -363,7 +377,8 @@ async function startDebate() {
     document.getElementById('debateContainer').style.display = 'block';
     document.getElementById('debateContent').innerHTML = '';
     document.getElementById('counterBtn').style.display = 'none';
-    document.getElementById('statsContainer').style.display = 'none';
+    document.getElementById('summaryBtn').style.display = 'none';
+    document.getElementById('downloadBtn').style.display = 'none';
     document.getElementById('startBtn').disabled = true;
     showLoading(true);
     
@@ -383,8 +398,9 @@ async function startDebate() {
             totalWordCount = opinion.length;
             updateStats();
             
-            // 反論ボタンを表示
+            // 各ボタンを表示
             document.getElementById('counterBtn').style.display = 'inline-block';
+            document.getElementById('downloadBtn').style.display = 'inline-block';
             document.getElementById('statsContainer').style.display = 'flex';
         }
     } catch (error) {
@@ -735,6 +751,7 @@ function resetDebate() {
     document.getElementById('debateContent').innerHTML = '';
     document.getElementById('counterBtn').style.display = 'none';
     document.getElementById('summaryBtn').style.display = 'none';
+    document.getElementById('downloadBtn').style.display = 'none';
     document.getElementById('statsContainer').style.display = 'none';
     document.getElementById('startBtn').disabled = false;
     
@@ -820,6 +837,58 @@ document.addEventListener('DOMContentLoaded', function() {
         topicInput.focus();
     }
 });
+
+// ディベートの内容をExcelでダウンロード
+function downloadDebateExcel() {
+    // ワークブックを作成
+    const wb = XLSX.utils.book_new();
+    
+    // ディベートデータの準備
+    const debateData = [
+        ['トピック', currentTopic],
+        ['総ターン数', turnCount.toString()],
+        ['総文字数', totalWordCount.toString()],
+        [''],  // 空行
+        ['ターン', '種類', '内容']  // ヘッダー行
+    ];
+    
+    // ディベート履歴をデータに追加
+    debateHistory.forEach(entry => {
+        debateData.push([
+            entry.turn.toString(),
+            entry.type === 'opinion' ? '意見' : '反論',
+            entry.content
+        ]);
+    });
+    
+    // ワークシートを作成
+    const ws = XLSX.utils.aoa_to_sheet(debateData);
+    
+    // 列幅の設定
+    const colWidths = [
+        { wch: 8 },   // ターン列
+        { wch: 8 },   // 種類列
+        { wch: 100 }  // 内容列
+    ];
+    ws['!cols'] = colWidths;
+    
+    // ワークブックにシートを追加
+    XLSX.utils.book_append_sheet(wb, ws, 'ディベート記録');
+    
+    // ファイル名を生成（日時を含める）
+    const now = new Date();
+    const timestamp = now.getFullYear() +
+        ('0' + (now.getMonth() + 1)).slice(-2) +
+        ('0' + now.getDate()).slice(-2) +
+        ('0' + now.getHours()).slice(-2) +
+        ('0' + now.getMinutes()).slice(-2);
+    const fileName = `AI_debate_${timestamp}.xlsx`;
+    
+    // Excelファイルとしてダウンロード
+    XLSX.writeFile(wb, fileName);
+    
+    showNotification('ディベート内容をExcelファイルとしてダウンロードしました', 'success');
+}
 
 console.log('debate.js読み込み完了');
     </script>
