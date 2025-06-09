@@ -53,9 +53,6 @@ app = Flask(__name__)
 # CORSの設定
 CORS(app, origins="*")
 
-# APIキーを直接アプリケーション設定に保存しない
-# 代わりに必要なときに環境変数から取得
-
 @app.route('/')
 def index():
     """メインページを提供"""
@@ -184,11 +181,30 @@ def get_gemini_response(prompt, max_tokens):
         
         text_content = candidate['content']['parts'][0]['text'].strip()
         
-        # 文字数制限に応じて切り詰め
+        # 文字数制限に応じて切り詰め（句読点で自然に区切る）
         if character_limit == 150 and len(text_content) > 180:
-            text_content = text_content[:150] + "..."
+            # 150文字以内で最後の句読点を探す
+            cut_point = 180
+            for i in range(min(150, len(text_content)-1), 0, -1):
+                if text_content[i] in ['。', '！', '？', '、']:
+                    cut_point = i + 1
+                    break
+            text_content = text_content[:cut_point].rstrip()
+            # 句読点で終わっていない場合は「...」を追加
+            if cut_point == 180 or text_content[-1] not in ['。', '！', '？']:
+                text_content += "..."
+                
         elif character_limit == 1000 and len(text_content) > 1200:
-            text_content = text_content[:1000] + "..."
+            # 1200文字以内で最後の句読点を探す
+            cut_point = 1200
+            for i in range(min(1200, len(text_content)-1), 0, -1):
+                if text_content[i] in ['。', '！', '？']:
+                    cut_point = i + 1
+                    break
+            text_content = text_content[:cut_point].rstrip()
+            # 句読点で終わっていない場合は「...」を追加
+            if cut_point == 1200 or text_content[-1] not in ['。', '！', '？']:
+                text_content += "..."
         
         return text_content
         
