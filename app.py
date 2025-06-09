@@ -91,8 +91,14 @@ def get_gemini_response(prompt, max_tokens):
     try:
         url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={app.config["GEMINI_API_KEY"]}'
         
-        # 文字数制限の指示を追加
-        enhanced_prompt = f"{prompt}\n\n注意: 必ず200文字程度で回答してください。"
+        # プロンプトに応じて文字数制限を変更
+        if "議論を整理する" in prompt or "分析" in prompt:
+            # 要約・分析の場合は文字数制限を緩和
+            character_limit = 1000
+        else:
+            # 通常の意見・反論は150文字
+            character_limit = 150
+            enhanced_prompt = f"{prompt}\n\n注意: 必ず{character_limit}文字以内で回答してください。"
         
         response = requests.post(
             url,
@@ -102,7 +108,7 @@ def get_gemini_response(prompt, max_tokens):
             json={
                 'contents': [{
                     'parts': [{
-                        'text': enhanced_prompt
+                        'text': enhanced_prompt if character_limit == 150 else prompt
                     }]
                 }],
                 'generationConfig': {
@@ -150,9 +156,11 @@ def get_gemini_response(prompt, max_tokens):
         
         text_content = candidate['content']['parts'][0]['text'].strip()
         
-        # 200文字を大幅に超える場合は切り詰める
-        if len(text_content) > 250:
-            text_content = text_content[:200] + "..."
+        # 文字数制限に応じて切り詰め
+        if character_limit == 150 and len(text_content) > 180:  # 余裕を持って180文字まで
+            text_content = text_content[:150] + "..."
+        elif character_limit == 1000 and len(text_content) > 1200:  # 余裕を持って1200文字まで
+            text_content = text_content[:1000] + "..."
         
         return text_content
         
