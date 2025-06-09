@@ -121,10 +121,11 @@ def get_gemini_response(prompt, max_tokens):
         
         # プロンプトに応じて文字数制限を変更
         if "議論を整理する" in prompt or "分析" in prompt:
-            character_limit = 1000
+            character_limit = 1200
+            enhanced_prompt = prompt
         else:
             character_limit = 150
-            enhanced_prompt = f"{prompt}\n\n注意: 必ず{character_limit}文字以内で回答してください。"
+            enhanced_prompt = f"{prompt}\n\n注意: 必ず{character_limit}文字以内で簡潔に回答してください。"
         
         # APIリクエストを送信（APIキーはパラメータとして安全に送信）
         response = requests.post(
@@ -134,7 +135,7 @@ def get_gemini_response(prompt, max_tokens):
             json={
                 'contents': [{
                     'parts': [{
-                        'text': enhanced_prompt if character_limit == 150 else prompt
+                        'text': enhanced_prompt
                     }]
                 }],
                 'generationConfig': {
@@ -184,27 +185,40 @@ def get_gemini_response(prompt, max_tokens):
         # 文字数制限に応じて切り詰め（句読点で自然に区切る）
         if character_limit == 150 and len(text_content) > 180:
             # 150文字以内で最後の句読点を探す
-            cut_point = 180
+            cut_point = 150
             for i in range(min(150, len(text_content)-1), 0, -1):
-                if text_content[i] in ['。', '！', '？', '、']:
+                if text_content[i] in ['。', '！', '？']:
                     cut_point = i + 1
                     break
+            
+            # 句読点が見つからなかった場合、読点で区切る
+            if cut_point == 150:
+                for i in range(min(150, len(text_content)-1), 0, -1):
+                    if text_content[i] in ['、', ' ']:
+                        cut_point = i
+                        break
+            
             text_content = text_content[:cut_point].rstrip()
             # 句読点で終わっていない場合は「...」を追加
-            if cut_point == 180 or text_content[-1] not in ['。', '！', '？']:
+            if text_content and text_content[-1] not in ['。', '！', '？']:
                 text_content += "..."
                 
-        elif character_limit == 1000 and len(text_content) > 1200:
+        elif character_limit == 1200 and len(text_content) > 1200:
             # 1200文字以内で最後の句読点を探す
             cut_point = 1200
             for i in range(min(1200, len(text_content)-1), 0, -1):
                 if text_content[i] in ['。', '！', '？']:
                     cut_point = i + 1
                     break
+            
             text_content = text_content[:cut_point].rstrip()
             # 句読点で終わっていない場合は「...」を追加
-            if cut_point == 1200 or text_content[-1] not in ['。', '！', '？']:
+            if text_content and text_content[-1] not in ['。', '！', '？']:
                 text_content += "..."
+        
+        # 最低限の文字数を確保
+        if len(text_content) < 20:
+            logger.warning(f"生成されたテキストが短すぎます: {len(text_content)}文字")
         
         return text_content
         
