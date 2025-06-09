@@ -477,8 +477,8 @@ async function getCounterArgument() {
 // AIから意見を取得
 async function getAIOpinion(topic, isInitial = true) {
     const prompt = isInitial
-        ? `次のトピックについて、あなたの意見を180文字程度で述べてください。論理的で説得力のある意見を提示してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}`
-        : `次のトピックについて、前回とは異なる視点から意見を180文字程度で述べてください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}`;
+        ? `次のトピックについて、あなたの意見を150文字程度で述べてください。論理的で説得力のある意見を提示してください。必ず150文字以内に収めてください。\n\nトピック: ${topic}`
+        : `次のトピックについて、前回とは異なる視点から意見を150文字程度で述べてください。必ず150文字以内に収めてください。\n\nトピック: ${topic}`;
     
     try {
         const response = await fetch('/api/ai-debate', {
@@ -488,7 +488,7 @@ async function getAIOpinion(topic, isInitial = true) {
             },
             body: JSON.stringify({
                 prompt: prompt,
-                max_tokens: 400  // 180文字でも十分なトークン数を確保
+                max_tokens: 300  // 150文字程度に対応
             })
         });
         
@@ -508,8 +508,8 @@ async function getAIOpinion(topic, isInitial = true) {
 // AIから反論を取得
 async function getAICounterArgument(topic, previousStatement, isCounterToCounter = false) {
     const prompt = isCounterToCounter
-        ? `次のトピックに関する議論で、相手の反論に対してさらに反論してください。180文字程度で論理的に反駁してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}\n\n相手の反論:\n${previousStatement}`
-        : `次のトピックに関する意見に対して、反対の立場から反論してください。180文字程度で論理的に反駁してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}\n\n相手の意見:\n${previousStatement}`;
+        ? `次のトピックに関する議論で、相手の反論に対してさらに反論してください。150文字以内で論理的に反駁してください。必ず150文字以内に収めてください。\n\nトピック: ${topic}\n\n相手の反論:\n${previousStatement}`
+        : `次のトピックに関する意見に対して、反対の立場から反論してください。150文字以内で論理的に反駁してください。必ず150文字以内に収めてください。\n\nトピック: ${topic}\n\n相手の意見:\n${previousStatement}`;
     
     try {
         const response = await fetch('/api/ai-debate', {
@@ -519,7 +519,7 @@ async function getAICounterArgument(topic, previousStatement, isCounterToCounter
             },
             body: JSON.stringify({
                 prompt: prompt,
-                max_tokens: 400  // 180文字でも十分なトークン数を確保
+                max_tokens: 300  // 150文字程度に対応
             })
         });
         
@@ -602,12 +602,13 @@ async function showDebateSummary() {
         }).join('\n\n');
         
         const prompt = `以下のディベートの内容を分析し、次の5つのカテゴリーに整理してください。各カテゴリーに2-3個の具体的なポイントを箇条書きで挙げてください。最後に、このトピックに対するAIとしての最終的なおすすめの結論を追加してください。
+文字数は1000文字程度で構いません。
 
 1. 合意点（両者が同意できる点）
 2. 対立点（意見が対立している点）
 3. 新しい洞察（議論から得られた新しい視点）
 4. 未解決の問題（さらに議論が必要な点）
-5. AIとしてのおすすめの結論（180文字程度）
+5. AIとしてのおすすめの結論（150文字程度）
 
 トピック: ${currentTopic}
 
@@ -641,7 +642,7 @@ ${debateText}
             },
             body: JSON.stringify({
                 prompt: prompt,
-                max_tokens: 1000
+                max_tokens: 2000  // 1000文字程度の要約に対応
             })
         });
         
