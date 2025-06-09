@@ -477,8 +477,8 @@ async function getCounterArgument() {
 // AIから意見を取得
 async function getAIOpinion(topic, isInitial = true) {
     const prompt = isInitial
-        ? `次のトピックについて、あなたの意見を300-400文字程度で述べてください。論理的で説得力のある意見を提示してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}`
-        : `次のトピックについて、前回とは異なる視点から意見を300-400文字程度で述べてください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}`;
+        ? `次のトピックについて、あなたの意見を180文字程度で述べてください。論理的で説得力のある意見を提示してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}`
+        : `次のトピックについて、前回とは異なる視点から意見を180文字程度で述べてください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}`;
     
     try {
         const response = await fetch('/api/ai-debate', {
@@ -488,7 +488,7 @@ async function getAIOpinion(topic, isInitial = true) {
             },
             body: JSON.stringify({
                 prompt: prompt,
-                max_tokens: 800  // 増やして十分な長さを確保
+                max_tokens: 400  // 180文字でも十分なトークン数を確保
             })
         });
         
@@ -508,8 +508,8 @@ async function getAIOpinion(topic, isInitial = true) {
 // AIから反論を取得
 async function getAICounterArgument(topic, previousStatement, isCounterToCounter = false) {
     const prompt = isCounterToCounter
-        ? `次のトピックに関する議論で、相手の反論に対してさらに反論してください。300-400文字程度で論理的に反駁してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}\n\n相手の反論:\n${previousStatement}`
-        : `次のトピックに関する意見に対して、反対の立場から反論してください。300-400文字程度で論理的に反駁してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}\n\n相手の意見:\n${previousStatement}`;
+        ? `次のトピックに関する議論で、相手の反論に対してさらに反論してください。180文字程度で論理的に反駁してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}\n\n相手の反論:\n${previousStatement}`
+        : `次のトピックに関する意見に対して、反対の立場から反論してください。180文字程度で論理的に反駁してください。途中で文章が途切れないように注意してください。\n\nトピック: ${topic}\n\n相手の意見:\n${previousStatement}`;
     
     try {
         const response = await fetch('/api/ai-debate', {
@@ -519,7 +519,7 @@ async function getAICounterArgument(topic, previousStatement, isCounterToCounter
             },
             body: JSON.stringify({
                 prompt: prompt,
-                max_tokens: 800  // 増やして十分な長さを確保
+                max_tokens: 400  // 180文字でも十分なトークン数を確保
             })
         });
         
@@ -601,12 +601,13 @@ async function showDebateSummary() {
             return `${type}${index + 1}: ${entry.content}`;
         }).join('\n\n');
         
-        const prompt = `以下のディベートの内容を分析し、次の4つのカテゴリーに整理してください。各カテゴリーに2-3個の具体的なポイントを箇条書きで挙げてください。
+        const prompt = `以下のディベートの内容を分析し、次の5つのカテゴリーに整理してください。各カテゴリーに2-3個の具体的なポイントを箇条書きで挙げてください。最後に、このトピックに対するAIとしての最終的なおすすめの結論を追加してください。
 
 1. 合意点（両者が同意できる点）
 2. 対立点（意見が対立している点）
 3. 新しい洞察（議論から得られた新しい視点）
 4. 未解決の問題（さらに議論が必要な点）
+5. AIとしてのおすすめの結論（180文字程度）
 
 トピック: ${currentTopic}
 
@@ -628,7 +629,10 @@ ${debateText}
 
 [未解決の問題]
 ・〜
-・〜`;
+・〜
+
+[AIとしてのおすすめの結論]
+〜`;
         
         const response = await fetch('/api/ai-debate', {
             method: 'POST',
@@ -637,7 +641,7 @@ ${debateText}
             },
             body: JSON.stringify({
                 prompt: prompt,
-                max_tokens: 800
+                max_tokens: 1000
             })
         });
         
@@ -665,7 +669,8 @@ function displayDebateMatrix(summaryText) {
         agreement: [],
         disagreement: [],
         insights: [],
-        unresolved: []
+        unresolved: [],
+        recommendation: ''
     };
     
     const lines = summaryText.split('\n');
@@ -681,8 +686,12 @@ function displayDebateMatrix(summaryText) {
             currentSection = 'insights';
         } else if (line.includes('[未解決の問題]')) {
             currentSection = 'unresolved';
-        } else if (line.startsWith('・') && currentSection) {
+        } else if (line.includes('[AIとしてのおすすめの結論]')) {
+            currentSection = 'recommendation';
+        } else if (line.startsWith('・') && currentSection && currentSection !== 'recommendation') {
             sections[currentSection].push(line.substring(1).trim());
+        } else if (currentSection === 'recommendation' && line.length > 0 && !line.includes('[')) {
+            sections.recommendation += line + ' ';
         }
     });
     
@@ -717,6 +726,10 @@ function displayDebateMatrix(summaryText) {
                 </ul>
             </div>
         </div>
+        <div class="ai-recommendation">
+            <h3><span style="color: #8b5cf6;">🤖</span> AIとしてのおすすめの結論</h3>
+            <p>${sections.recommendation}</p>
+        </div>
         <div class="debate-summary">
             <p class="summary-text">
                 ${turnCount}ターンの議論を通じて、様々な視点から「${currentTopic}」について検討しました。<br>
@@ -725,6 +738,32 @@ function displayDebateMatrix(summaryText) {
             <button class="close-summary-btn" onclick="closeSummary()">閉じる</button>
         </div>
     `;
+    
+    // AIおすすめ結論のスタイルを追加
+    const style = document.createElement('style');
+    style.textContent = `
+        .ai-recommendation {
+            margin-top: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(139, 92, 246, 0.1);
+        }
+        
+        .ai-recommendation h3 {
+            color: #8b5cf6;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .ai-recommendation p {
+            color: #4c1d95;
+            line-height: 1.6;
+            margin: 0;
+            font-size: 1.1em;
+        }
+    `;
+    document.head.appendChild(style);
     
     document.getElementById('debateContent').appendChild(matrixDiv);
     matrixDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
