@@ -306,6 +306,9 @@
                 <button id="counterBtn" class="btn btn-secondary" onclick="getCounterArgument()" style="display: none;">
                     ⚔️ AIの反論を聞く
                 </button>
+                <button id="summaryBtn" class="btn btn-primary" onclick="showDebateSummary()" style="display: none;">
+                    📊 議論を整理する
+                </button>
                 <span id="loadingIndicator" class="loading" style="display: none;"></span>
             </div>
 
@@ -437,9 +440,12 @@ async function getCounterArgument() {
             updateStats();
             
             // 10ターン達成時に整理ボタンを表示
-            if (turnCount >= 10 && !document.getElementById('summaryBtn').style.display !== 'none') {
-                document.getElementById('summaryBtn').style.display = 'inline-block';
-                showNotification('10ターン達成！議論をマトリックスで整理できます', 'success');
+            if (turnCount >= 9) {  // 9ターン目で次のターンが10になるため
+                const summaryBtn = document.getElementById('summaryBtn');
+                if (summaryBtn) {
+                    summaryBtn.style.display = 'inline-block';
+                    showNotification('10ターン達成！議論をマトリックスで整理できます', 'success');
+                }
             }
         }
     } catch (error) {
@@ -507,6 +513,16 @@ async function getAICounterArgument(topic, previousStatement, isCounterToCounter
         }
         
         const data = await response.json();
+
+        // 10ターン達成時に整理ボタンを表示
+        if (turnCount >= 9) {  // 9ターン目で次のターンが10になるため
+            const summaryBtn = document.getElementById('summaryBtn');
+            if (summaryBtn) {
+                summaryBtn.style.display = 'inline-block';
+                showNotification('10ターン達成！議論をマトリックスで整理できます', 'success');
+            }
+        }
+        
         return data.response;
     } catch (error) {
         console.error('AI反論取得エラー:', error);
