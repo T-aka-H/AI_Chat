@@ -435,6 +435,12 @@ async function getCounterArgument() {
             
             totalWordCount += counterArgument.length;
             updateStats();
+            
+            // 10ターン達成時に整理ボタンを表示
+            if (turnCount >= 10 && !document.getElementById('summaryBtn').style.display !== 'none') {
+                document.getElementById('summaryBtn').style.display = 'inline-block';
+                showNotification('10ターン達成！議論をマトリックスで整理できます', 'success');
+            }
         }
     } catch (error) {
         console.error('反論取得エラー:', error);
@@ -543,6 +549,161 @@ function updateStats() {
     document.getElementById('wordCount').textContent = totalWordCount;
 }
 
+// ディベートの要約とマトリックス表示
+async function showDebateSummary() {
+    if (isProcessing) {
+        showNotification('処理中です。お待ちください。', 'info');
+        return;
+    }
+    
+    isProcessing = true;
+    document.getElementById('summaryBtn').disabled = true;
+    showLoading(true);
+    
+    try {
+        // ディベートの内容を整理
+        const debateText = debateHistory.map((entry, index) => {
+            const type = entry.type === 'opinion' ? '意見' : '反論';
+            return `${type}${index + 1}: ${entry.content}`;
+        }).join('\n\n');
+        
+        const prompt = `以下のディベートの内容を分析し、次の4つのカテゴリーに整理してください。各カテゴリーに2-3個の具体的なポイントを箇条書きで挙げてください。
+
+1. 合意点（両者が同意できる点）
+2. 対立点（意見が対立している点）
+3. 新しい洞察（議論から得られた新しい視点）
+4. 未解決の問題（さらに議論が必要な点）
+
+トピック: ${currentTopic}
+
+ディベート内容:
+${debateText}
+
+回答は以下の形式でお願いします：
+[合意点]
+・〜
+・〜
+
+[対立点]
+・〜
+・〜
+
+[新しい洞察]
+・〜
+・〜
+
+[未解決の問題]
+・〜
+・〜`;
+        
+        const response = await fetch('/api/ai-debate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                max_tokens: 800
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('要約の取得に失敗しました');
+        }
+        
+        const data = await response.json();
+        displayDebateMatrix(data.response);
+        
+    } catch (error) {
+        console.error('要約取得エラー:', error);
+        showNotification('エラーが発生しました: ' + error.message, 'error');
+    } finally {
+        isProcessing = false;
+        document.getElementById('summaryBtn').disabled = false;
+        showLoading(false);
+    }
+}
+
+// マトリックス形式で表示
+function displayDebateMatrix(summaryText) {
+    // 要約テキストを解析
+    const sections = {
+        agreement: [],
+        disagreement: [],
+        insights: [],
+        unresolved: []
+    };
+    
+    const lines = summaryText.split('\n');
+    let currentSection = null;
+    
+    lines.forEach(line => {
+        line = line.trim();
+        if (line.includes('[合意点]')) {
+            currentSection = 'agreement';
+        } else if (line.includes('[対立点]')) {
+            currentSection = 'disagreement';
+        } else if (line.includes('[新しい洞察]')) {
+            currentSection = 'insights';
+        } else if (line.includes('[未解決の問題]')) {
+            currentSection = 'unresolved';
+        } else if (line.startsWith('・') && currentSection) {
+            sections[currentSection].push(line.substring(1).trim());
+        }
+    });
+    
+    // マトリックスのHTMLを作成
+    const matrixDiv = document.createElement('div');
+    matrixDiv.className = 'matrix-container';
+    matrixDiv.innerHTML = `
+        <h2 class="matrix-title">🎯 ディベート分析マトリックス</h2>
+        <div class="matrix-grid">
+            <div class="matrix-quadrant">
+                <h3><span style="color: #10b981;">✅</span> 合意点</h3>
+                <ul>
+                    ${sections.agreement.map(item => `<li class="agreement">${item}</li>`).join('')}
+                </ul>
+            </div>
+            <div class="matrix-quadrant">
+                <h3><span style="color: #ef4444;">⚔️</span> 対立点</h3>
+                <ul>
+                    ${sections.disagreement.map(item => `<li class="disagreement">${item}</li>`).join('')}
+                </ul>
+            </div>
+            <div class="matrix-quadrant">
+                <h3><span style="color: #3b82f6;">💡</span> 新しい洞察</h3>
+                <ul>
+                    ${sections.insights.map(item => `<li class="insight">${item}</li>`).join('')}
+                </ul>
+            </div>
+            <div class="matrix-quadrant">
+                <h3><span style="color: #f59e0b;">❓</span> 未解決の問題</h3>
+                <ul>
+                    ${sections.unresolved.map(item => `<li class="question">${item}</li>`).join('')}
+                </ul>
+            </div>
+        </div>
+        <div class="debate-summary">
+            <p class="summary-text">
+                ${turnCount}ターンの議論を通じて、様々な視点から「${currentTopic}」について検討しました。<br>
+                上記のマトリックスは、議論の主要なポイントを整理したものです。
+            </p>
+            <button class="close-summary-btn" onclick="closeSummary()">閉じる</button>
+        </div>
+    `;
+    
+    document.getElementById('debateContent').appendChild(matrixDiv);
+    matrixDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// 要約を閉じる
+function closeSummary() {
+    const matrixContainer = document.querySelector('.matrix-container');
+    if (matrixContainer) {
+        matrixContainer.remove();
+    }
+}
+
 // ディベートをリセット
 function resetDebate() {
     currentTopic = '';
@@ -555,6 +716,7 @@ function resetDebate() {
     document.getElementById('debateContainer').style.display = 'none';
     document.getElementById('debateContent').innerHTML = '';
     document.getElementById('counterBtn').style.display = 'none';
+    document.getElementById('summaryBtn').style.display = 'none';
     document.getElementById('statsContainer').style.display = 'none';
     document.getElementById('startBtn').disabled = false;
     
