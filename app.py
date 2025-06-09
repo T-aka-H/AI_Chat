@@ -5,24 +5,56 @@ import os
 from dotenv import load_dotenv
 import logging
 from flask_cors import CORS
+import re
+
+# カスタムログフィルター（APIキーを隠す）
+class APIKeyFilter(logging.Filter):
+    def filter(self, record):
+        if hasattr(record, 'msg'):
+            # URLに含まれるAPIキーを隠す
+            if isinstance(record.msg, str):
+                record.msg = re.sub(r'key=[A-Za-z0-9_-]+', 'key=***HIDDEN***', record.msg)
+                # URLエンコードされたAPIキーも隠す
+                record.msg = re.sub(r'key%3D[A-Za-z0-9_-]+', 'key%3D***HIDDEN***', record.msg)
+            # 引数内のAPIキーを隠す
+            if hasattr(record, 'args'):
+                record.args = tuple(
+                    re.sub(r'key=[A-Za-z0-9_-]+', 'key=***HIDDEN***', str(arg))
+                    if isinstance(arg, str) else arg
+                    for arg in record.args
+                )
+        return True
 
 # ログ設定
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
+# APIキーフィルターを追加
+logger.addFilter(APIKeyFilter())
+
+# サードパーティライブラリのログレベルを調整
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
 # 環境変数の読み込み
 load_dotenv()
+
+# APIキーを環境変数から安全に取得
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if not GEMINI_API_KEY:
+    logger.critical('GEMINI_API_KEYが環境変数に設定されていません')
+    raise ValueError('GEMINI_API_KEY must be set in environment variables')
 
 app = Flask(__name__)
 
 # CORSの設定
 CORS(app, origins="*")
 
-# 環境変数から設定を取得
-app.config['GEMINI_API_KEY'] = os.environ.get('GEMINI_API_KEY')
+# APIキーを直接アプリケーション設定に保存しない
+# 代わりに必要なときに環境変数から取得
 
 @app.route('/')
 def index():
@@ -40,14 +72,12 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'service': 'AI Debate App',
-        'gemini_configured': bool(app.config['GEMINI_API_KEY'])
+        'gemini_configured': bool(GEMINI_API_KEY)  # APIキー自体は公開しない
     })
 
 @app.route('/api/ai-debate', methods=['POST', 'OPTIONS'])
 def ai_debate():
     """Gemini AIを使用したディベート応答API"""
-    logger.debug('AIディベートエンドポイントにリクエストを受信')
-    
     if request.method == 'OPTIONS':
         response = jsonify({})
         response.headers['Access-Control-Allow-Origin'] = '*'
@@ -67,8 +97,9 @@ def ai_debate():
         if not prompt:
             return jsonify({'error': 'プロンプトが提供されていません'}), 400
         
-        if not app.config['GEMINI_API_KEY']:
-            return jsonify({'error': 'GEMINI_API_KEY が設定されていません'}), 500
+        if not GEMINI_API_KEY:
+            logger.error('APIキーが設定されていません')
+            return jsonify({'error': 'APIキーが設定されていません'}), 500
         
         # Gemini APIを呼び出し
         response_text = get_gemini_response(prompt, max_tokens)
@@ -79,32 +110,30 @@ def ai_debate():
         })
         
     except requests.exceptions.Timeout:
+        logger.error('Gemini APIリクエストがタイムアウトしました')
         return jsonify({'error': 'AI応答がタイムアウトしました。再度お試しください。'}), 504
     except Exception as e:
         logger.error(f'AIディベートエラー: {str(e)}')
-        return jsonify({'error': f'内部エラー: {str(e)}'}), 500
+        return jsonify({'error': 'サーバー内部でエラーが発生しました'}), 500
 
 def get_gemini_response(prompt, max_tokens):
     """Gemini APIを使用して応答を取得"""
-    logger.info('Gemini APIにリクエスト送信')
-    
     try:
-        url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={app.config["GEMINI_API_KEY"]}'
+        # APIエンドポイントとパラメータを分離
+        base_url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
         
         # プロンプトに応じて文字数制限を変更
         if "議論を整理する" in prompt or "分析" in prompt:
-            # 要約・分析の場合は文字数制限を緩和
             character_limit = 1000
         else:
-            # 通常の意見・反論は150文字
             character_limit = 150
             enhanced_prompt = f"{prompt}\n\n注意: 必ず{character_limit}文字以内で回答してください。"
         
+        # APIリクエストを送信（APIキーはパラメータとして安全に送信）
         response = requests.post(
-            url,
-            headers={
-                'Content-Type': 'application/json'
-            },
+            base_url,
+            params={'key': GEMINI_API_KEY},  # URLパラメータとして送信
+            headers={'Content-Type': 'application/json'},
             json={
                 'contents': [{
                     'parts': [{
@@ -140,9 +169,8 @@ def get_gemini_response(prompt, max_tokens):
         )
         
         if response.status_code != 200:
-            error_msg = f"Gemini API エラー: {response.status_code}"
-            logger.error(f"{error_msg}: {response.text}")
-            raise Exception(error_msg)
+            logger.error(f"Gemini API エラー: ステータスコード {response.status_code}")
+            raise Exception('Gemini APIからエラーレスポンスを受信しました')
         
         data = response.json()
         
@@ -157,14 +185,15 @@ def get_gemini_response(prompt, max_tokens):
         text_content = candidate['content']['parts'][0]['text'].strip()
         
         # 文字数制限に応じて切り詰め
-        if character_limit == 150 and len(text_content) > 180:  # 余裕を持って180文字まで
+        if character_limit == 150 and len(text_content) > 180:
             text_content = text_content[:150] + "..."
-        elif character_limit == 1000 and len(text_content) > 1200:  # 余裕を持って1200文字まで
+        elif character_limit == 1000 and len(text_content) > 1200:
             text_content = text_content[:1000] + "..."
         
         return text_content
         
     except requests.exceptions.Timeout:
+        logger.error('Gemini APIリクエストがタイムアウトしました')
         raise Exception('Gemini APIがタイムアウトしました')
     except Exception as e:
         logger.error(f'Gemini API呼び出しエラー: {str(e)}')
@@ -183,7 +212,8 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ['true', '1', 'yes']
     
-    logger.info(f'AIディベートアプリ起動: ポート {port}')
-    logger.info(f'環境変数確認 - GEMINI_API_KEY: {"設定済み" if os.environ.get("GEMINI_API_KEY") else "未設定"}')
+    logger.info('AIディベートアプリを起動します')
+    # APIキーの存在確認のみをログに出力（値は出力しない）
+    logger.info('環境変数確認 - GEMINI_API_KEY: %s', '設定済み' if GEMINI_API_KEY else '未設定')
     
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
