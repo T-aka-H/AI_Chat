@@ -128,7 +128,7 @@ async function getAIOpinion(topic, isInitial = true) {
         : `次のトピックについて、前回とは異なる視点から意見を200文字程度で述べてください。\n\nトピック: ${topic}`;
     
     try {
-        const response = await fetch('https://meal-tracker-2-jyq6.onrender.com/api/ai-debate', {
+        const response = await fetch('https://ai-chat-lqp4.onrender.com/api/ai-debate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -159,7 +159,7 @@ async function getAICounterArgument(topic, previousStatement, isCounterToCounter
         : `次のトピックに関する意見に対して、反対の立場から反論してください。200文字程度で論理的に反駁してください。\n\nトピック: ${topic}\n\n相手の意見:\n${previousStatement}`;
     
     try {
-        const response = await fetch('https://meal-tracker-2-jyq6.onrender.com/api/ai-debate', {
+        const response = await fetch('https://ai-chat-lqp4.onrender.com/api/ai-debate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
