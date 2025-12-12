@@ -127,6 +127,9 @@ def get_gemini_response(prompt, max_tokens):
             character_limit = 150
             enhanced_prompt = f"{prompt}\n\n注意: 必ず{character_limit}文字以内で簡潔に回答してください。"
         
+        # リクエスト情報をログに記録（APIキーは隠す）
+        logger.info(f"Gemini APIリクエスト送信: prompt長={len(enhanced_prompt)}文字, max_tokens={max_tokens}")
+        
         # APIリクエストを送信（APIキーはパラメータとして安全に送信）
         response = requests.post(
             base_url,
@@ -166,19 +169,47 @@ def get_gemini_response(prompt, max_tokens):
             timeout=30
         )
         
+        logger.info(f"Gemini APIレスポンス受信: ステータスコード={response.status_code}")
+        
         if response.status_code != 200:
             logger.error(f"Gemini API エラー: ステータスコード {response.status_code}")
-            raise Exception('Gemini APIからエラーレスポンスを受信しました')
+            error_detail = response.text
+            logger.error(f"エラー詳細: {error_detail}")
+            raise Exception(f'Gemini APIからエラーレスポンスを受信しました (ステータス: {response.status_code})')
         
         data = response.json()
         
+        # エラーレスポンスのチェック
+        if 'error' in data:
+            error_message = data['error'].get('message', 'Unknown error')
+            logger.error(f"Gemini API エラー: {error_message}")
+            raise Exception(f'Gemini APIエラー: {error_message}')
+        
         if 'candidates' not in data or len(data['candidates']) == 0:
+            logger.error(f"予期しないレスポンス形式: {data}")
             raise Exception('Gemini APIからの応答が予期された形式ではありません')
         
         candidate = data['candidates'][0]
         
-        if 'finishReason' in candidate and candidate['finishReason'] == 'SAFETY':
-            return "申し訳ございませんが、このトピックについては安全性の観点から応答を生成できません。"
+        # finishReasonのチェック
+        if 'finishReason' in candidate:
+            if candidate['finishReason'] == 'SAFETY':
+                return "申し訳ございませんが、このトピックについては安全性の観点から応答を生成できません。"
+            elif candidate['finishReason'] not in ['STOP', 'MAX_TOKENS']:
+                logger.warning(f"予期しないfinishReason: {candidate['finishReason']}")
+        
+        # contentとpartsの存在確認
+        if 'content' not in candidate:
+            logger.error(f"candidateにcontentがありません: {candidate}")
+            raise Exception('Gemini APIからの応答にcontentが含まれていません')
+        
+        if 'parts' not in candidate['content'] or len(candidate['content']['parts']) == 0:
+            logger.error(f"contentにpartsがありません: {candidate['content']}")
+            raise Exception('Gemini APIからの応答にpartsが含まれていません')
+        
+        if 'text' not in candidate['content']['parts'][0]:
+            logger.error(f"parts[0]にtextがありません: {candidate['content']['parts'][0]}")
+            raise Exception('Gemini APIからの応答にtextが含まれていません')
         
         text_content = candidate['content']['parts'][0]['text'].strip()
         
@@ -225,8 +256,14 @@ def get_gemini_response(prompt, max_tokens):
     except requests.exceptions.Timeout:
         logger.error('Gemini APIリクエストがタイムアウトしました')
         raise Exception('Gemini APIがタイムアウトしました')
+    except requests.exceptions.RequestException as e:
+        logger.error(f'Gemini APIリクエストエラー: {str(e)}')
+        raise Exception(f'Gemini APIへのリクエストに失敗しました: {str(e)}')
+    except KeyError as e:
+        logger.error(f'レスポンス解析エラー (KeyError): {str(e)}')
+        raise Exception(f'APIレスポンスの解析に失敗しました: {str(e)}')
     except Exception as e:
-        logger.error(f'Gemini API呼び出しエラー: {str(e)}')
+        logger.error(f'Gemini API呼び出しエラー: {str(e)}', exc_info=True)
         raise
 
 @app.errorhandler(404)

@@ -493,15 +493,29 @@ async function getAIOpinion(topic, isInitial = true) {
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'AI意見の取得に失敗しました');
+            let errorMessage = 'AI意見の取得に失敗しました';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                errorMessage = `サーバーエラー (${response.status}): ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
         
         const data = await response.json();
+        if (!data.response) {
+            throw new Error('APIレスポンスにresponseフィールドがありません');
+        }
         return data.response;
     } catch (error) {
         console.error('AI意見取得エラー:', error);
-        throw error;
+        // エラーメッセージが既に設定されている場合はそのまま、そうでなければ汎用メッセージ
+        if (error.message && !error.message.includes('サーバー内部でエラーが発生しました')) {
+            throw error;
+        } else {
+            throw new Error('サーバー内部でエラーが発生しました');
+        }
     }
 }
 
@@ -524,11 +538,20 @@ async function getAICounterArgument(topic, previousStatement, isCounterToCounter
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'AI反論の取得に失敗しました');
+            let errorMessage = 'AI反論の取得に失敗しました';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                errorMessage = `サーバーエラー (${response.status}): ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
         
         const data = await response.json();
+        if (!data.response) {
+            throw new Error('APIレスポンスにresponseフィールドがありません');
+        }
 
         // 10ターン以降も議論を継続可能にし、整理ボタンを表示
         if (turnCount >= 9) {  // 9ターン目で次のターンが10になるため
@@ -544,7 +567,12 @@ async function getAICounterArgument(topic, previousStatement, isCounterToCounter
         return data.response;
     } catch (error) {
         console.error('AI反論取得エラー:', error);
-        throw error;
+        // エラーメッセージが既に設定されている場合はそのまま、そうでなければ汎用メッセージ
+        if (error.message && !error.message.includes('サーバー内部でエラーが発生しました')) {
+            throw error;
+        } else {
+            throw new Error('サーバー内部でエラーが発生しました');
+        }
     }
 }
 
@@ -647,10 +675,20 @@ ${debateText}
         });
         
         if (!response.ok) {
-            throw new Error('要約の取得に失敗しました');
+            let errorMessage = '要約の取得に失敗しました';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                errorMessage = `サーバーエラー (${response.status}): ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
         
         const data = await response.json();
+        if (!data.response) {
+            throw new Error('APIレスポンスにresponseフィールドがありません');
+        }
         displayDebateMatrix(data.response);
         
     } catch (error) {
